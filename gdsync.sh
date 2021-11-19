@@ -289,7 +289,7 @@ then
     exit 1
 fi
 
-(while true; do zenity --width=200 --info --text="Google Drive sync in progress..." --title="Google Drive Sync" --icon-name='network-transmit-receive'; done) &
+(trap "kill -- -$$" EXIT; while true; do zenity --width=200 --info --text="Google Drive sync in progress..." --title="Google Drive Sync" --icon-name='network-transmit-receive'; done) &
 
 if ! verify_gd_dir
 then
@@ -300,6 +300,16 @@ fi
 
 load_local_mtime
 load_remote_mtime
+
+if test -z "$ENC_PASSWORD"
+then
+    if ! ENC_PASSWORD="$(zenity --password --title='Google Drive Sync Password')"
+    then
+        echo "No password provided..." >&2
+        kill %%
+        exit 1
+    fi
+fi
 
 case "$1" in
     --add) shift; gds_add "$@" ;;
