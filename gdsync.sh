@@ -283,6 +283,19 @@ gds_pull()
     IFS="$IFS_BAK"
 }
 
+prompt_password()
+{
+    if test -z "$ENC_PASSWORD"
+    then
+        if ! ENC_PASSWORD="$(zenity --password --title='Google Drive Sync Password')"
+        then
+            echo "No password provided..." >&2
+            kill %%
+            exit 1
+        fi
+    fi
+}
+
 if (($# == 0))
 then
     usage
@@ -301,23 +314,13 @@ fi
 load_local_mtime
 load_remote_mtime
 
-if test -z "$ENC_PASSWORD"
-then
-    if ! ENC_PASSWORD="$(zenity --password --title='Google Drive Sync Password')"
-    then
-        echo "No password provided..." >&2
-        kill %%
-        exit 1
-    fi
-fi
-
 case "$1" in
-    --add) shift; gds_add "$@" ;;
+    --add) shift; prompt_password; gds_add "$@" ;;
     --del) shift; gds_del "$@" ;;
-    --sync) gds_sync ;;
-    --pull) shift; gds_pull ;;
-    --force-pull) ;;
-    --force-push) ;;
+    --sync) prompt_password; gds_sync ;;
+    --pull) shift; prompt_password; gds_pull ;;
+    --force-pull) prompt_password ;;
+    --force-push) prompt_password ;;
     --update-gio) gds_update_gio ;;
     *) usage; kill %%; exit 1 ;;
 esac
