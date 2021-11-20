@@ -12,6 +12,7 @@ This repo is a part of the *ParasiteOS* project (https://github.com/nivram913/Pa
 - `openssl >= 1.1.1` (for encryption)
 - `zenity` command (for GUI)
 - `gio` utility (for emblem on synced files)
+- `secret-tool` utility (for storing password in Gnome Keyring)
 
 *Optional :*
 

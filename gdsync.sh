@@ -2,7 +2,8 @@
 
 GD_DIR="$HOME/gdrive/" # Directory with Google Drive access
 GDS_INDEX_FILE="$HOME/.gds_index" # Index file of gdsync
-ENC_PASSWORD='' # Password for symetric encryption (AES-256-CBC in use) / if empty, prompt at execution
+ENC_PASSWORD='' # Password for symetric encryption (AES-256-CBC in use) / SHOULD BE EMPTY
+USE_GNOME_KEYRING=true # Switch to use Gnome Keyring for storing ENC_PASSWORD (will prompt for password at first run)
 PBKDF_ITER='100000' # PBKDF2 iteration count (default: 100000, higher = stronger)
 REMOTE_DIR="gdsync_testing" # Directory on Google Drive holding sync items
 declare -A REMOTE_MTIME
@@ -287,11 +288,19 @@ prompt_password()
 {
     if test -z "$ENC_PASSWORD"
     then
-        if ! ENC_PASSWORD="$(zenity --password --title='Google Drive Sync Password')"
+        if $USE_GNOME_KEYRING
         then
-            echo "No password provided..." >&2
-            kill %%
-            exit 1
+            ENC_PASSWORD="$(secret-tool search application gds 2>/dev/null | grep "secret =" | cut -d '=' -f2)"
+            if test -z "$ENC_PASSWORD"
+            then
+                if ! ENC_PASSWORD="$(zenity --password --title='Google Drive Sync Password')"
+                then
+                    echo "No password provided..." >&2
+                    kill %%
+                    exit 1
+                fi
+                echo -n "$ENC_PASSWORD" | secret-tool store --label="Google Drive Sync" "application" "gds"
+            fi
         fi
     fi
 }
