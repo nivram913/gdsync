@@ -5,7 +5,7 @@ Files are encrypted with AES 256 bits in CBC mode before being uploaded to Googl
 
 This tool is intended to be used from a GUI on **Xubuntu 20.04** but can run on other system as well if dependencies are installed.
 
-This repo is a part of the *ParasiteOS* project (https://github.com/nivram913/ParasiteOS-base).
+This repo is a part of the *ParasiteOS* project (https://github.com/nivram913/ParasiteOS).
 
 ## Requierements
 - `drive` (https://github.com/odeke-em/drive) (for Google Drive uploading)
