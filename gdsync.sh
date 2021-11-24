@@ -284,6 +284,112 @@ gds_pull()
     IFS="$IFS_BAK"
 }
 
+# Force pulling files
+gds_force_pull()
+{
+    local REMOTE_NAME file sub_file IFS_BAK file_dir filename
+    
+    for file in "$@"
+    do
+        if test -n "${PROCESSED_FILES["$file"]}"
+        then
+            continue
+        fi
+        
+        if test -d "$file"
+        then
+            IFS_BAK="$IFS"
+            IFS="
+"
+            for sub_file in $(find "$file" -type f 2>/dev/null)
+            do
+                gds_force_pull "$sub_file"
+            done
+            IFS="$IFS_BAK"
+            continue
+        fi
+        
+        if test -z "${LOCAL_MTIME["$file"]}"
+        then
+            echo "$file not syncing ! Skipping..." >&2
+            continue
+        fi
+        
+        REMOTE_NAME="$(echo "$file" | tr '/' '.')"
+        
+        if test -f "$file"
+        then
+            file_dir="${file%/*}"
+            filename="${file##*/}"
+            
+            cd "$GD_DIR"
+            drive pull -piped "$REMOTE_DIR/$REMOTE_NAME" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file_dir/$filename.gds" -pass pass:"$ENC_PASSWORD"
+            cd - > /dev/null
+            
+            mv "$file" "$file.gdsbak"
+            mv "$file_dir/$filename.gds" "$file"
+            touch --date="@${REMOTE_MTIME["$file"]}" "$file"
+            LOCAL_MTIME["$file"]=${REMOTE_MTIME["$file"]}
+            gio set "$file" -t stringv metadata::emblems emblem-colors-green
+            
+            PROCESSED_FILES["$file"]="processed"
+        else
+            echo "$file doesn't exist ! Skipping..." >&2
+            continue
+        fi
+    done
+}
+
+# Force pushing files
+gds_force_push()
+{
+    local REMOTE_NAME file sub_file IFS_BAK
+    
+    for file in "$@"
+    do
+        if test -n "${PROCESSED_FILES["$file"]}"
+        then
+            continue
+        fi
+        
+        if test -d "$file"
+        then
+            IFS_BAK="$IFS"
+            IFS="
+"
+            for sub_file in $(find "$file" -type f 2>/dev/null)
+            do
+                gds_force_push "$sub_file"
+            done
+            IFS="$IFS_BAK"
+            continue
+        fi
+        
+        if test -z "${LOCAL_MTIME["$file"]}"
+        then
+            echo "$file not syncing ! Skipping..." >&2
+            continue
+        fi
+        
+        REMOTE_NAME="$(echo "$file" | tr '/' '.')"
+        
+        if test -f "$file"
+        then
+            cd "$GD_DIR"
+            openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -in "$file" -pass pass:"$ENC_PASSWORD" | drive push -piped "$REMOTE_DIR/$REMOTE_NAME"
+            cd - > /dev/null
+            
+            REMOTE_MTIME["$file"]="$(stat --format=%Y "$file")"
+            LOCAL_MTIME["$file"]=${REMOTE_MTIME["$file"]}
+            gio set "$file" -t stringv metadata::emblems emblem-colors-green
+            PROCESSED_FILES["$file"]="processed"
+        else
+            echo "$file doesn't exist ! Skipping..." >&2
+            continue
+        fi
+    done
+}
+
 prompt_password()
 {
     if test -z "$ENC_PASSWORD"
@@ -328,8 +434,8 @@ case "$1" in
     --del) shift; gds_del "$@" ;;
     --sync) prompt_password; gds_sync ;;
     --pull) shift; prompt_password; gds_pull ;;
-    --force-pull) prompt_password ;;
-    --force-push) prompt_password ;;
+    --force-pull) shift; prompt_password; if (($# > 0)); then gds_force_pull "$@"; else gds_force_pull "${!LOCAL_MTIME[@]}" ;;
+    --force-push) shift; prompt_password; if (($# > 0)); then gds_force_push "$@"; else gds_force_push "${!LOCAL_MTIME[@]}" ;;
     --update-gio) gds_update_gio ;;
     *) usage; kill %%; exit 1 ;;
 esac
