@@ -1,7 +1,7 @@
 # gdsync
 Google Drive synchronization tool.
 
-Files are encrypted with AES 256 bits in CBC mode before being uploaded to Google Drive. *Filename are still in cleartext for the moment.*
+Files are encrypted with AES 256 bits in CBC mode before being uploaded to Google Drive. Filenames are encrypted too.
 
 This tool is intended to be used from a GUI on **Xubuntu 20.04** but can run on other system as well if dependencies are installed.
 

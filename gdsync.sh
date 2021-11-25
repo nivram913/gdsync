@@ -7,6 +7,7 @@ USE_GNOME_KEYRING=true # Switch to use Gnome Keyring for storing ENC_PASSWORD (w
 PBKDF_ITER='100000' # PBKDF2 iteration count (default: 100000, higher = stronger)
 REMOTE_DIR="gdsync_testing" # Directory on Google Drive holding sync items
 declare -A REMOTE_MTIME
+declare -A REMOTE_ENCRYPTED_NAMES
 declare -A LOCAL_MTIME
 declare -A PROCESSED_FILES
 
@@ -47,15 +48,22 @@ verify_gd_dir()
 
 load_remote_mtime()
 {
-    local file mtime line
+    local file_names clear_filename enc_filename mtime line
     cd "$GD_DIR"
     
     while read line
     do
-        file="${line%/*}"
+        if test -z "$line"
+        then
+            continue
+        fi
+        file_names="${line%/*}"
+        clear_filename="/${file_names#*/}"
+        enc_filename="${file_names%%/*}"
         mtime="${line##*/}"
-        REMOTE_MTIME["$file"]="$mtime"
-    done <<< "$(drive pull -piped "$REMOTE_DIR/mtime.lst")"
+        REMOTE_MTIME["$clear_filename"]="$mtime"
+        REMOTE_ENCRYPTED_NAMES["$clear_filename"]="$enc_filename"
+    done <<< "$(drive pull -piped "$REMOTE_DIR/mtime.lst" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD")"
     
     cd - > /dev/null
 }
@@ -64,7 +72,7 @@ save_remote_mtime()
 {
     cd "$GD_DIR"
     drive trash -quiet "$REMOTE_DIR/mtime.lst"
-    (for file in "${!REMOTE_MTIME[@]}"; do echo "$file/${REMOTE_MTIME["$file"]}"; done) | drive push -piped "$REMOTE_DIR/mtime.lst"
+    (for file in "${!REMOTE_MTIME[@]}"; do echo "${REMOTE_ENCRYPTED_NAMES["$file"]}$file/${REMOTE_MTIME["$file"]}"; done) | openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD" | drive push -piped "$REMOTE_DIR/mtime.lst"
     cd - > /dev/null
 }
 
@@ -132,7 +140,7 @@ gds_add()
             continue
         fi
         
-        REMOTE_NAME="$(echo "$file" | tr '/' '.')"
+        REMOTE_NAME="$(cat /dev/urandom | tr -dc '[:alpha:]' | head -c 40)"
         
         if test -f "$file"
         then
@@ -146,6 +154,7 @@ gds_add()
                 cd - > /dev/null
                 
                 REMOTE_MTIME["$file"]="$(stat --format=%Y "$file")"
+                REMOTE_ENCRYPTED_NAMES["$file"]="$REMOTE_NAME"
                 LOCAL_MTIME["$file"]=${REMOTE_MTIME["$file"]}
                 gio set "$file" -t stringv metadata::emblems emblem-colors-green
             fi
@@ -200,19 +209,17 @@ gds_del()
 # Perform a synchronization
 gds_sync()
 {
-    local REMOTE_NAME file file_dir filename
+    local file file_dir filename
     
     for file in "${!LOCAL_MTIME[@]}"
     do
-        REMOTE_NAME="$(echo "$file" | tr '/' '.')"
-        
         if test "${LOCAL_MTIME["$file"]}" -lt "${REMOTE_MTIME["$file"]}"
         then
             file_dir="${file%/*}"
             filename="${file##*/}"
             
             cd "$GD_DIR"
-            drive pull -piped "$REMOTE_DIR/$REMOTE_NAME" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file_dir/$filename.gds" -pass pass:"$ENC_PASSWORD"
+            drive pull -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file_dir/$filename.gds" -pass pass:"$ENC_PASSWORD"
             cd - > /dev/null
             
             mv "$file" "$file.gdsbak"
@@ -223,8 +230,8 @@ gds_sync()
         elif test "${LOCAL_MTIME["$file"]}" -gt "${REMOTE_MTIME["$file"]}"
         then
             cd "$GD_DIR"
-            drive trash -quiet "$REMOTE_DIR/$REMOTE_NAME"
-            openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -in "$file" -pass pass:"$ENC_PASSWORD" | drive push -piped "$REMOTE_DIR/$REMOTE_NAME"
+            drive trash -quiet "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
+            openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -in "$file" -pass pass:"$ENC_PASSWORD" | drive push -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
             cd - > /dev/null
             
             REMOTE_MTIME["$file"]=${LOCAL_MTIME["$file"]}
@@ -250,7 +257,7 @@ gds_update_gio()
 # Interactively pull a file from server that is not locally present
 gds_pull()
 {
-    local file selected_files REMOTE_NAME
+    local file selected_files
     local -a remote_files
     
     for file in "${!REMOTE_MTIME[@]}"
@@ -271,10 +278,8 @@ gds_pull()
     IFS="|"
     for file in "$selected_files"
     do
-        REMOTE_NAME="$(echo "$file" | tr '/' '.')"
-        
         cd "$GD_DIR"
-        drive pull -piped "$REMOTE_DIR/$REMOTE_NAME" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file" -pass pass:"$ENC_PASSWORD"
+        drive pull -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file" -pass pass:"$ENC_PASSWORD"
         cd - > /dev/null
         
         touch --date="@${REMOTE_MTIME["$file"]}" "$file"
@@ -287,7 +292,7 @@ gds_pull()
 # Force pulling files
 gds_force_pull()
 {
-    local REMOTE_NAME file sub_file IFS_BAK file_dir filename
+    local file sub_file IFS_BAK file_dir filename
     
     for file in "$@"
     do
@@ -315,15 +320,13 @@ gds_force_pull()
             continue
         fi
         
-        REMOTE_NAME="$(echo "$file" | tr '/' '.')"
-        
         if test -f "$file"
         then
             file_dir="${file%/*}"
             filename="${file##*/}"
             
             cd "$GD_DIR"
-            drive pull -piped "$REMOTE_DIR/$REMOTE_NAME" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file_dir/$filename.gds" -pass pass:"$ENC_PASSWORD"
+            drive pull -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file_dir/$filename.gds" -pass pass:"$ENC_PASSWORD"
             cd - > /dev/null
             
             mv "$file" "$file.gdsbak"
@@ -343,7 +346,7 @@ gds_force_pull()
 # Force pushing files
 gds_force_push()
 {
-    local REMOTE_NAME file sub_file IFS_BAK
+    local file sub_file IFS_BAK
     
     for file in "$@"
     do
@@ -371,12 +374,10 @@ gds_force_push()
             continue
         fi
         
-        REMOTE_NAME="$(echo "$file" | tr '/' '.')"
-        
         if test -f "$file"
         then
             cd "$GD_DIR"
-            openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -in "$file" -pass pass:"$ENC_PASSWORD" | drive push -piped "$REMOTE_DIR/$REMOTE_NAME"
+            openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -in "$file" -pass pass:"$ENC_PASSWORD" | drive push -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
             cd - > /dev/null
             
             REMOTE_MTIME["$file"]="$(stat --format=%Y "$file")"
@@ -426,16 +427,18 @@ then
     exit 1
 fi
 
+prompt_password
+
 load_local_mtime
 load_remote_mtime
 
 case "$1" in
-    --add) shift; prompt_password; gds_add "$@" ;;
+    --add) shift; gds_add "$@" ;;
     --del) shift; gds_del "$@" ;;
-    --sync) prompt_password; gds_sync ;;
-    --pull) shift; prompt_password; gds_pull ;;
-    --force-pull) shift; prompt_password; if (($# > 0)); then gds_force_pull "$@"; else gds_force_pull "${!LOCAL_MTIME[@]}" ;;
-    --force-push) shift; prompt_password; if (($# > 0)); then gds_force_push "$@"; else gds_force_push "${!LOCAL_MTIME[@]}" ;;
+    --sync) gds_sync ;;
+    --pull) shift; gds_pull ;;
+    --force-pull) shift; if (($# > 0)); then gds_force_pull "$@"; else gds_force_pull "${!LOCAL_MTIME[@]}"; fi ;;
+    --force-push) shift; if (($# > 0)); then gds_force_push "$@"; else gds_force_push "${!LOCAL_MTIME[@]}"; fi ;;
     --update-gio) gds_update_gio ;;
     *) usage; kill %%; exit 1 ;;
 esac
