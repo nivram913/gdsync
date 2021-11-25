@@ -1,5 +1,5 @@
 # gdsync
-Google Drive synchronization tool.
+Google Drive synchronization tool. Successor of the venerable `autosave_gd` (https://github.com/nivram913/autosave_gd).
 
 Files are encrypted with AES 256 bits in CBC mode before being uploaded to Google Drive. Filenames are encrypted too.
 
