@@ -5,7 +5,7 @@ Files are encrypted with AES 256 bits in CBC mode before being uploaded to Googl
 
 This tool is intended to be used from a GUI on **Xubuntu 20.04** but can run on other system as well if dependencies are installed.
 
-This repo is a part of the *ParasiteOS* project (https://github.com/nivram913/ParasiteOS).
+The syncronization is pretty basic : it's based on modification time.
 
 ## Requierements
 - `drive` (https://github.com/odeke-em/drive) (for Google Drive uploading)
@@ -13,6 +13,7 @@ This repo is a part of the *ParasiteOS* project (https://github.com/nivram913/Pa
 - `zenity` command (for GUI)
 - `gio` utility (for emblem on synced files)
 - `secret-tool` utility (for storing password in Gnome Keyring)
+- `inotifywait` utility (for `gds_inotify.sh` for real time emblem updating)
 
 *Optional :*
 
@@ -31,8 +32,14 @@ This repo is a part of the *ParasiteOS* project (https://github.com/nivram913/Pa
 - Go in `Edit` -> `Configure custom actions...` in Thunar and add these new entries:
   - `Name`=`Add to sync`, `Command`=`gdsync.sh --add %F`
   - `Name`=`Remove from sync`, `Command`=`gdsync.sh --del %F`
+  - `Name`=`Force push`, `Command`=`gdsync.sh --force-push %F`
+  - `Name`=`Force pull`, `Command`=`gdsync.sh --force-pull %F`
 
-You can setup a keyboard shortcut to execute `gdsync.sh --sync` to trigger a synchronization.
+You can setup a keyboard shortcut to execute `gdsync.sh --sync` to trigger a synchronization and `gdsync.sh --pull` to pull file(s) from remote server that are not locally present.
+
+You can setup a (ana)cron task to execute `gdsync.sh --update-gio` to update emblems on synced files. Green dot emblem means in sync files and red dot emblem means not in sync files.
+
+Moreover, you can start `gds_inotify.sh` in background task that will update the emblem of modified files in real time thanks to `inotify` feature.
 
 ## Usage
 
