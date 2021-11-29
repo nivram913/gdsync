@@ -113,25 +113,21 @@ save_local_mtime()
 # add files in arguments to index file and upload them
 gds_add()
 {
-    local REMOTE_NAME file sub_file IFS_BAK
+    local REMOTE_NAME file i len
     
-    for file in "$@"
+    len="$(find "$@" -type f | wc -l)"
+    i=0
+    progress_bar 'gdsync - Adding files to sync' < /tmp/gds_progress_ipc &
+    exec 3> /tmp/gds_progress_ipc
+    
+    while read file
     do
+        echo "#Processing $file..." >&3
+        bc >&3 <<< "scale=2;$i/$len*100"
+        ((i++))
+        
         if test -n "${PROCESSED_FILES["$file"]}"
         then
-            continue
-        fi
-        
-        if test -d "$file"
-        then
-            IFS_BAK="$IFS"
-            IFS="
-"
-            for sub_file in $(find "$file" -type f 2>/dev/null)
-            do
-                gds_add "$sub_file"
-            done
-            IFS="$IFS_BAK"
             continue
         fi
         
@@ -164,31 +160,27 @@ gds_add()
             echo "$file doesn't exist ! Skipping..." >&2
             continue
         fi
-    done
+    done <<< "$(find "$@" -type f)"
 }
 
 # remove files in arguments from index file
 gds_del()
 {
-    local file
+    local file i len
     
-    for file in "$@"
+    len="$(find "$@" -type f | wc -l)"
+    i=0
+    progress_bar 'gdsync - Removing files from sync' < /tmp/gds_progress_ipc &
+    exec 3> /tmp/gds_progress_ipc
+    
+    while read file
     do
+        echo "#Processing $file..." >&3
+        bc >&3 <<< "scale=2;$i/$len*100"
+        ((i++))
+        
         if test -n "${PROCESSED_FILES["$file"]}"
         then
-            continue
-        fi
-        
-        if test -d "$file"
-        then
-            IFS_BAK="$IFS"
-            IFS="
-"
-            for sub_file in $(find "$file" -type f 2>/dev/null)
-            do
-                gds_del "$sub_file"
-            done
-            IFS="$IFS_BAK"
             continue
         fi
         
@@ -204,27 +196,31 @@ gds_del()
             gio set "$file" -t unset metadata::emblems
         fi
         PROCESSED_FILES["$file"]="processed"
-    done
+    done <<< "$(find "$@" -type f)"
 }
 
 # Perform a synchronization
 gds_sync()
 {
-    local file file_dir filename
+    local file i len
+    
+    len="${#LOCAL_MTIME[@]}"
+    i=0
+    progress_bar 'gdsync - Syncing files with server' < /tmp/gds_progress_ipc &
+    exec 3> /tmp/gds_progress_ipc
     
     for file in "${!LOCAL_MTIME[@]}"
     do
+        echo "#Processing $file..." >&3
+        bc >&3 <<< "scale=2;$i/$len*100"
+        ((i++))
+        
         if test "${LOCAL_MTIME["$file"]}" -lt "${REMOTE_MTIME["$file"]}"
         then
-            file_dir="${file%/*}"
-            filename="${file##*/}"
-            
             cd "$GD_DIR"
-            drive pull -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file_dir/$filename.gds" -pass pass:"$ENC_PASSWORD"
+            drive pull -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file" -pass pass:"$ENC_PASSWORD"
             cd - > /dev/null
             
-            mv "$file" "$file.gdsbak"
-            mv "$file_dir/$filename.gds" "$file"
             touch --date="@${REMOTE_MTIME["$file"]}" "$file"
             LOCAL_MTIME["$file"]=${REMOTE_MTIME["$file"]}
             gio set "$file" -t stringv metadata::emblems emblem-colors-green
@@ -236,6 +232,8 @@ gds_sync()
             cd - > /dev/null
             
             REMOTE_MTIME["$file"]=${LOCAL_MTIME["$file"]}
+            gio set "$file" -t stringv metadata::emblems emblem-colors-green
+        else
             gio set "$file" -t stringv metadata::emblems emblem-colors-green
         fi
     done
@@ -258,7 +256,7 @@ gds_update_gio()
 # Interactively pull a file from server that is not locally present
 gds_pull()
 {
-    local file selected_files
+    local file selected_files i len
     local -a remote_files
     
     for file in "${!REMOTE_MTIME[@]}"
@@ -269,14 +267,23 @@ gds_pull()
         fi
     done
     
-    selected_files="$(zenity --list --column='' --text='Select file(s) to pull from server:' --checklist --separator='\n' --print-column='2' --column='Remote file' "${remote_files[@]}")"
+    selected_files="$(zenity --width=500 --height=500 --list --column='' --text='Select file(s) to pull from server:' --checklist --separator='\n' --print-column='2' --column='Remote file' "${remote_files[@]}")"
     if test -z "$selected_files"
     then
         return
     fi
     
+    len="$(echo "$selected_files" | wc -l)"
+    i=0
+    progress_bar 'gdsync - Pulling files from server' < /tmp/gds_progress_ipc &
+    exec 3> /tmp/gds_progress_ipc
+    
     while read file
     do
+        echo "#Processing $file..." >&3
+        bc >&3 <<< "scale=2;$i/$len*100"
+        ((i++))
+        
         cd "$GD_DIR"
         drive pull -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file" -pass pass:"$ENC_PASSWORD"
         cd - > /dev/null
@@ -290,25 +297,21 @@ gds_pull()
 # Force pulling files
 gds_force_pull()
 {
-    local file sub_file IFS_BAK file_dir filename
+    local file i len
     
-    for file in "$@"
+    len="$(find "$@" -type f | wc -l)"
+    i=0
+    progress_bar 'gdsync - Force pulling files from server' < /tmp/gds_progress_ipc &
+    exec 3> /tmp/gds_progress_ipc
+    
+    while read file
     do
+        echo "#Processing $file..." >&3
+        bc >&3 <<< "scale=2;$i/$len*100"
+        ((i++))
+        
         if test -n "${PROCESSED_FILES["$file"]}"
         then
-            continue
-        fi
-        
-        if test -d "$file"
-        then
-            IFS_BAK="$IFS"
-            IFS="
-"
-            for sub_file in $(find "$file" -type f 2>/dev/null)
-            do
-                gds_force_pull "$sub_file"
-            done
-            IFS="$IFS_BAK"
             continue
         fi
         
@@ -320,15 +323,10 @@ gds_force_pull()
         
         if test -f "$file"
         then
-            file_dir="${file%/*}"
-            filename="${file##*/}"
-            
             cd "$GD_DIR"
-            drive pull -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file_dir/$filename.gds" -pass pass:"$ENC_PASSWORD"
+            drive pull -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file" -pass pass:"$ENC_PASSWORD"
             cd - > /dev/null
             
-            mv "$file" "$file.gdsbak"
-            mv "$file_dir/$filename.gds" "$file"
             touch --date="@${REMOTE_MTIME["$file"]}" "$file"
             LOCAL_MTIME["$file"]=${REMOTE_MTIME["$file"]}
             gio set "$file" -t stringv metadata::emblems emblem-colors-green
@@ -338,31 +336,27 @@ gds_force_pull()
             echo "$file doesn't exist ! Skipping..." >&2
             continue
         fi
-    done
+    done <<< "$(find "$@" -type f)"
 }
 
 # Force pushing files
 gds_force_push()
 {
-    local file sub_file IFS_BAK
+    local file i len
     
-    for file in "$@"
+    len="$(find "$@" -type f | wc -l)"
+    i=0
+    progress_bar 'gdsync - Force pushing files to server' < /tmp/gds_progress_ipc &
+    exec 3> /tmp/gds_progress_ipc
+    
+    while read file
     do
+        echo "#Processing $file..." >&3
+        bc >&3 <<< "scale=2;$i/$len*100"
+        ((i++))
+        
         if test -n "${PROCESSED_FILES["$file"]}"
         then
-            continue
-        fi
-        
-        if test -d "$file"
-        then
-            IFS_BAK="$IFS"
-            IFS="
-"
-            for sub_file in $(find "$file" -type f 2>/dev/null)
-            do
-                gds_force_push "$sub_file"
-            done
-            IFS="$IFS_BAK"
             continue
         fi
         
@@ -386,13 +380,13 @@ gds_force_push()
             echo "$file doesn't exist ! Skipping..." >&2
             continue
         fi
-    done
+    done <<< "$(find "$@" -type f)"
 }
 
 # Interactively delete a file from server and untrack associated local file
 gds_rdel()
 {
-    local file selected_files
+    local file selected_files i len
     local -a remote_files
     
     for file in "${!REMOTE_MTIME[@]}"
@@ -405,14 +399,23 @@ gds_rdel()
         fi
     done
     
-    selected_files="$(zenity --list --column='' --text='Select file(s) to remove from server:' --checklist --column='Remote file' --separator='\n' --print-column='2' --column='Local' "${remote_files[@]}")"
+    selected_files="$(zenity --width=500 --height=500 --list --column='' --text='Select file(s) to remove from server:' --checklist --column='Remote file' --separator='\n' --print-column='2' --column='Local' "${remote_files[@]}")"
     if test -z "$selected_files"
     then
         return
     fi
     
+    len="$(echo "$selected_files" | wc -l)"
+    i=0
+    progress_bar 'gdsync - Deleting files from server' < /tmp/gds_progress_ipc &
+    exec 3> /tmp/gds_progress_ipc
+    
     while read file
     do
+        echo "#Processing $file..." >&3
+        bc >&3 <<< "scale=2;$i/$len*100"
+        ((i++))
+        
         echo "$file"
         cd "$GD_DIR"
         drive trash -quiet "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
@@ -440,7 +443,6 @@ prompt_password()
                 if ! ENC_PASSWORD="$(zenity --password --title='Google Drive Sync Password')"
                 then
                     echo "No password provided..." >&2
-                    kill %%
                     exit 1
                 fi
                 echo -n "$ENC_PASSWORD" | secret-tool store --label="Google Drive Sync" "application" "gds"
@@ -449,18 +451,27 @@ prompt_password()
     fi
 }
 
+progress_bar()
+{
+    zenity --width=400 --progress --auto-close --no-cancel --title="$1"
+}
+
 if (($# == 0))
 then
     usage
     exit 1
 fi
 
-(trap "kill -- -$$" EXIT; while true; do zenity --width=200 --info --text="Google Drive sync in progress..." --title="Google Drive Sync" --icon-name='network-transmit-receive'; done) &
+if test -p /tmp/gds_progress_ipc
+then
+    echo "Already running..." >&2
+    exit 1
+fi
+#(trap "kill -- -$$" EXIT; while true; do zenity --width=200 --info --text="Google Drive sync in progress..." --title="Google Drive Sync" --icon-name='network-transmit-receive'; done) &
 
 if ! verify_gd_dir
 then
     echo "No drive directory at $GD_DIR or no internet connection" >&2
-    kill %%
     exit 1
 fi
 
@@ -468,6 +479,8 @@ prompt_password
 
 load_local_mtime
 load_remote_mtime
+
+mkfifo --mode=660 /tmp/gds_progress_ipc
 
 case "$1" in
     --add) shift; gds_add "$@" ;;
@@ -478,13 +491,14 @@ case "$1" in
     --force-pull) shift; if (($# > 0)); then gds_force_pull "$@"; else gds_force_pull "${!LOCAL_MTIME[@]}"; fi ;;
     --force-push) shift; if (($# > 0)); then gds_force_push "$@"; else gds_force_push "${!LOCAL_MTIME[@]}"; fi ;;
     --update-gio) gds_update_gio ;;
-    *) usage; kill %%; exit 1 ;;
+    *) usage; exec 3>&-; rm -f /tmp/gds_progress_ipc; exit 1 ;;
 esac
+
+exec 3>&-
+rm -f /tmp/gds_progress_ipc
 
 save_local_mtime
 save_remote_mtime
-
-kill %%
 
 exit 0
 
