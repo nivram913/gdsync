@@ -10,10 +10,12 @@ do
     if test "$file" = "$GDS_INDEX_FILE"
     then
         sleep 5
+        xfce4-panel --plugin-event=genmon:refresh:bool:true
         $0 &
         exit 0
     else
         gio set "$file" -t stringv metadata::emblems emblem-colors-red
+        xfce4-panel --plugin-event=genmon:refresh:bool:true
     fi
 done
 

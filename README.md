@@ -13,11 +13,12 @@ The syncronization is pretty basic : it's based on modification time.
 - `zenity` command (for GUI)
 - `gio` utility (for emblem on synced files)
 - `secret-tool` utility (for storing password in Gnome Keyring)
-- `inotifywait` utility (for `gds_inotify.sh` for real time emblem updating)
 
 *Optional :*
 
 - `thunar` file manager (for actions from right click on files)
+- `inotifywait` utility (for `gds_inotify.sh` for real time emblem updating)
+- `xfce4-genmon-plugin` plugin (for icon in Xfce panel with `gds_genmon.sh`)
 
 ## Install
 
@@ -35,11 +36,13 @@ The syncronization is pretty basic : it's based on modification time.
   - `Name`=`Force push`, `Command`=`gdsync.sh --force-push %F`
   - `Name`=`Force pull`, `Command`=`gdsync.sh --force-pull %F`
 
-You can setup a keyboard shortcut to execute `gdsync.sh --sync` to trigger a synchronization and `gdsync.sh --pull` to pull file(s) from remote server that are not locally present.
+You can setup a keyboard shortcut to execute `gdsync.sh --sync` to trigger a synchronization and `gdsync.sh --pull` to pull file(s) from remote server that are not locally present. Or you can use `gds_genmon.sh` (see below).
 
 You can setup a (ana)cron task to execute `gdsync.sh --update-gio` to update emblems on synced files. Green dot emblem means in sync files and red dot emblem means not in sync files.
 
 Moreover, you can start `gds_inotify.sh` in background task that will update the emblem of modified files in real time thanks to `inotify` feature.
+
+`gds_genmon.sh` is a script for `xfce4-genmon-plugin` that display an icon in the Xfce panel to display synchronization status and perform action like sync, pulling files or deleting files from server, etc...
 
 ## Usage
 
@@ -47,6 +50,7 @@ Moreover, you can start `gds_inotify.sh` in background task that will update the
 Usage: ./gdsync.sh <option> [<absolute path to files>]
 --add         Add specified file(s) to the synchronization process
 --del         Delete specified file(s) from the synchronization process
+--rdel        Delete specified remote file(s)
 --sync        Perform a synchronization of all syncing files
 --pull        Interactively pull a file from server that is not locally present
 --update-gio  Update GIO emblem on synced files
