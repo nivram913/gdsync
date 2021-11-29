@@ -1,6 +1,7 @@
 #! /bin/bash
 
 GDS_INDEX_FILE="$HOME/.gds_index" # Index file of gdsync
+gdsync.sh --update-gio
 
 inotifywait -q -m -r -e modify --format '%w%f' --fromfile "$GDS_INDEX_FILE" "$GDS_INDEX_FILE" |
 while read file

@@ -6,6 +6,8 @@ ENC_PASSWORD='' # Password for symetric encryption (AES-256-CBC in use) / SHOULD
 USE_GNOME_KEYRING=true # Switch to use Gnome Keyring for storing ENC_PASSWORD (will prompt for password at first run)
 PBKDF_ITER='100000' # PBKDF2 iteration count (default: 100000, higher = stronger)
 REMOTE_DIR="gdsync" # Directory on Google Drive holding sync items
+
+REMOTE_UPDATED=false
 declare -A REMOTE_MTIME
 declare -A REMOTE_ENCRYPTED_NAMES
 declare -A LOCAL_MTIME
@@ -17,7 +19,7 @@ usage()
     echo "Usage: $0 <option> [<absolute path to files>]"
     echo "--add         Add specified file(s) to the synchronization process"
     echo "--del         Delete specified file(s) from the synchronization process"
-    echo "--rdel        Delete remote file(s)"
+    echo "--rdel        Delete specified remote file(s)"
     echo "--sync        Perform a synchronization of all syncing files"
     echo "--pull        Interactively pull a file from server that is not locally present"
     echo "--update-gio  Update GIO emblem on synced files"
@@ -151,6 +153,7 @@ gds_add()
                 cd - > /dev/null
                 
                 REMOTE_MTIME["$file"]="$(stat --format=%Y "$file")"
+                REMOTE_UPDATED=true
                 REMOTE_ENCRYPTED_NAMES["$file"]="$REMOTE_NAME"
                 LOCAL_MTIME["$file"]=${REMOTE_MTIME["$file"]}
                 gio set "$file" -t stringv metadata::emblems emblem-colors-green
@@ -232,6 +235,7 @@ gds_sync()
             cd - > /dev/null
             
             REMOTE_MTIME["$file"]=${LOCAL_MTIME["$file"]}
+            REMOTE_UPDATED=true
             gio set "$file" -t stringv metadata::emblems emblem-colors-green
         else
             gio set "$file" -t stringv metadata::emblems emblem-colors-green
@@ -373,6 +377,7 @@ gds_force_push()
             cd - > /dev/null
             
             REMOTE_MTIME["$file"]="$(stat --format=%Y "$file")"
+            REMOTE_UPDATED=true
             LOCAL_MTIME["$file"]=${REMOTE_MTIME["$file"]}
             gio set "$file" -t stringv metadata::emblems emblem-colors-green
             PROCESSED_FILES["$file"]="processed"
@@ -422,6 +427,7 @@ gds_rdel()
         cd - > /dev/null
         
         unset REMOTE_MTIME["$file"]
+        REMOTE_UPDATED=true
         unset REMOTE_ENCRYPTED_NAMES["$file"]
         if test -f "$file"
         then
@@ -501,7 +507,7 @@ exec 3>&-
 rm -f /tmp/gds_progress_ipc
 
 save_local_mtime
-save_remote_mtime
+$REMOTE_UPDATED && save_remote_mtime
 
 exit 0
 
