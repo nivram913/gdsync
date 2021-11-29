@@ -5,7 +5,7 @@ GDS_INDEX_FILE="$HOME/.gds_index" # Index file of gdsync
 ENC_PASSWORD='' # Password for symetric encryption (AES-256-CBC in use) / SHOULD BE EMPTY
 USE_GNOME_KEYRING=true # Switch to use Gnome Keyring for storing ENC_PASSWORD (will prompt for password at first run)
 PBKDF_ITER='100000' # PBKDF2 iteration count (default: 100000, higher = stronger)
-REMOTE_DIR="gdsync_testing" # Directory on Google Drive holding sync items
+REMOTE_DIR="gdsync" # Directory on Google Drive holding sync items
 declare -A REMOTE_MTIME
 declare -A REMOTE_ENCRYPTED_NAMES
 declare -A LOCAL_MTIME
@@ -17,6 +17,7 @@ usage()
     echo "Usage: $0 <option> [<absolute path to files>]"
     echo "--add         Add specified file(s) to the synchronization process"
     echo "--del         Delete specified file(s) from the synchronization process"
+    echo "--rdel        Delete remote file(s)"
     echo "--sync        Perform a synchronization of all syncing files"
     echo "--pull        Interactively pull a file from server that is not locally present"
     echo "--update-gio  Update GIO emblem on synced files"
@@ -268,15 +269,13 @@ gds_pull()
         fi
     done
     
-    selected_files="$(zenity --list --column="" --text="Select file(s) to pull from server:" --checklist --column="Remote file" "${remote_files[@]}")"
+    selected_files="$(zenity --list --column='' --text='Select file(s) to pull from server:' --checklist --separator='\n' --print-column='2' --column='Remote file' "${remote_files[@]}")"
     if test -z "$selected_files"
     then
         return
     fi
     
-    IFS_BAK="$IFS"
-    IFS="|"
-    for file in "$selected_files"
+    while read file
     do
         cd "$GD_DIR"
         drive pull -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file" -pass pass:"$ENC_PASSWORD"
@@ -285,8 +284,7 @@ gds_pull()
         touch --date="@${REMOTE_MTIME["$file"]}" "$file"
         LOCAL_MTIME["$file"]=${REMOTE_MTIME["$file"]}
         gio set "$file" -t stringv metadata::emblems emblem-colors-green
-    done
-    IFS="$IFS_BAK"
+    done <<< "$selected_files"
 }
 
 # Force pulling files
@@ -391,6 +389,45 @@ gds_force_push()
     done
 }
 
+# Interactively delete a file from server and untrack associated local file
+gds_rdel()
+{
+    local file selected_files
+    local -a remote_files
+    
+    for file in "${!REMOTE_MTIME[@]}"
+    do
+        if test -f "$file"
+        then
+            remote_files+=("" "$file" "Yes")
+        else
+            remote_files+=("" "$file" "No")
+        fi
+    done
+    
+    selected_files="$(zenity --list --column='' --text='Select file(s) to remove from server:' --checklist --column='Remote file' --separator='\n' --print-column='2' --column='Local' "${remote_files[@]}")"
+    if test -z "$selected_files"
+    then
+        return
+    fi
+    
+    while read file
+    do
+        echo "$file"
+        cd "$GD_DIR"
+        drive trash -quiet "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
+        cd - > /dev/null
+        
+        unset REMOTE_MTIME["$file"]
+        unset REMOTE_ENCRYPTED_NAMES["$file"]
+        if test -f "$file"
+        then
+            unset LOCAL_MTIME["$file"]
+            gio set "$file" -t unset metadata::emblems
+        fi
+    done <<< "$selected_files"
+}
+
 prompt_password()
 {
     if test -z "$ENC_PASSWORD"
@@ -435,8 +472,9 @@ load_remote_mtime
 case "$1" in
     --add) shift; gds_add "$@" ;;
     --del) shift; gds_del "$@" ;;
+    --rdel) gds_rdel ;;
     --sync) gds_sync ;;
-    --pull) shift; gds_pull ;;
+    --pull) gds_pull ;;
     --force-pull) shift; if (($# > 0)); then gds_force_pull "$@"; else gds_force_pull "${!LOCAL_MTIME[@]}"; fi ;;
     --force-push) shift; if (($# > 0)); then gds_force_push "$@"; else gds_force_push "${!LOCAL_MTIME[@]}"; fi ;;
     --update-gio) gds_update_gio ;;
