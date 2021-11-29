@@ -433,21 +433,24 @@ gds_rdel()
 
 prompt_password()
 {
-    if test -z "$ENC_PASSWORD"
+    if test -n "$ENC_PASSWORD"
     then
-        if $USE_GNOME_KEYRING
+        return
+    fi
+    if $USE_GNOME_KEYRING
+    then
+        ENC_PASSWORD="$(secret-tool search application gds 2>/dev/null | grep 'secret =' | cut -d '=' -f2)"
+        if test -z "$ENC_PASSWORD"
         then
-            ENC_PASSWORD="$(secret-tool search application gds 2>/dev/null | grep "secret =" | cut -d '=' -f2)"
-            if test -z "$ENC_PASSWORD"
+            if ! ENC_PASSWORD="$(zenity --password --title='Google Drive Sync Password')"
             then
-                if ! ENC_PASSWORD="$(zenity --password --title='Google Drive Sync Password')"
-                then
-                    echo "No password provided..." >&2
-                    exit 1
-                fi
-                echo -n "$ENC_PASSWORD" | secret-tool store --label="Google Drive Sync" "application" "gds"
+                echo "No password provided..." >&2
+                exit 1
             fi
+            echo -n "$ENC_PASSWORD" | secret-tool store --label="Google Drive Sync" "application" "gds"
         fi
+    else
+        ENC_PASSWORD="$(zenity --password --title='Google Drive Sync Password')"
     fi
 }
 
