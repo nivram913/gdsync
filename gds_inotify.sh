@@ -11,6 +11,7 @@ do
     then
         sleep 5
         xfce4-panel --plugin-event=genmon:refresh:bool:true
+        exec 0>&-
         $0 &
         exit 0
     else
