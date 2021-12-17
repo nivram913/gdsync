@@ -263,6 +263,8 @@ gds_pull()
     local file selected_files i len
     local -a remote_files
     
+    remote_files=("" "ALL")
+    
     for file in "${!REMOTE_MTIME[@]}"
     do
         if test -z ${LOCAL_MTIME["$file"]}
@@ -277,6 +279,21 @@ gds_pull()
         return
     fi
     
+    if test "$(echo "$selected_files" | head -n 1)" = "ALL"
+    then
+        selected_files=""
+        for rf in "${remote_files[@]}"
+        do
+            if test "$rf" = "ALL" -o -z "$rf"
+            then
+                continue
+            fi
+            selected_files="$selected_files
+$rf"
+        done
+        selected_files="$(echo "$selected_files" | tail -n +2)"
+    fi
+    
     len="$(echo "$selected_files" | wc -l)"
     i=0
     progress_bar 'gdsync - Pulling files from server' < /tmp/gds_progress_ipc &
@@ -287,6 +304,12 @@ gds_pull()
         echo "#Processing $file..." >&3
         bc >&3 <<< "scale=2;$i/$len*100"
         ((i++))
+        
+        directory="${file%/*}"
+        if ! test -d "$directory"
+        then
+            mkdir -p "$directory"
+        fi
         
         cd "$GD_DIR"
         drive pull -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file" -pass pass:"$ENC_PASSWORD"
