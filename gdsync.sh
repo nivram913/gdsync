@@ -468,7 +468,7 @@ prompt_password()
     fi
     if $USE_GNOME_KEYRING
     then
-        ENC_PASSWORD="$(secret-tool search application gds 2>/dev/null | grep 'secret =' | cut -d '=' -f2)"
+        ENC_PASSWORD="$(secret-tool search application gds 2>/dev/null | grep 'secret =' | cut -d '=' -f2 | tail -c +2)"
         if test -z "$ENC_PASSWORD"
         then
             if ! ENC_PASSWORD="$(zenity --password --title='Google Drive Sync Password')"
