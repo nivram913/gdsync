@@ -281,7 +281,7 @@ gds_pull()
     
     for file in "${!REMOTE_MTIME[@]}"
     do
-        if test -z ${LOCAL_MTIME["$file"]}
+        if ! test -f "$file"
         then
             remote_files+=("" "$file")
         fi
