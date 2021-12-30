@@ -1,22 +1,11 @@
 #! /bin/bash
 
 GDS_INDEX_FILE="$HOME/.gds_index" # Index file of gdsync
-
-file_not_sync()
-{
-    while read file
-    do
-        if gio info -a metadata::emblems "$file" | grep emblem-colors-red
-        then
-            return 0
-        fi
-    done < "$GDS_INDEX_FILE"
-    return 1
-}
+GDS_MOD_FILES_INDICATOR="$HOME/.gds_mfiles_indicator" # Indicator of modified files
 
 if (($# == 0))
 then
-    if file_not_sync
+    if test -f "$GDS_MOD_FILES_INDICATOR"
     then
         echo "<img>/usr/share/icons/elementary-xfce-darker/actions/22/process-stop.png</img>"
         echo "<tool>Some files need to be synced</tool>"

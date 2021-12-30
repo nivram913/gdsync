@@ -2,6 +2,7 @@
 
 GD_DIR="$HOME/gdrive/" # Directory with Google Drive access
 GDS_INDEX_FILE="$HOME/.gds_index" # Index file of gdsync
+GDS_MOD_FILES_INDICATOR="$HOME/.gds_mfiles_indicator" # Indicator of modified files
 ENC_PASSWORD='' # Password for symetric encryption (AES-256-CBC in use) / SHOULD BE EMPTY
 USE_GNOME_KEYRING=true # Switch to use Gnome Keyring for storing ENC_PASSWORD (will prompt for password at first run)
 PBKDF_ITER='100000' # PBKDF2 iteration count (default: 100000, higher = stronger)
@@ -147,6 +148,7 @@ gds_add()
             then
                 LOCAL_MTIME["$file"]="$(stat --format=%Y "$file")"
                 gio set "$file" -t stringv metadata::emblems emblem-colors-red
+                echo -n > "$GDS_MOD_FILES_INDICATOR"
             else
                 cd "$GD_DIR"
                 openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -in "$file" -pass pass:"$ENC_PASSWORD" | drive push -piped "$REMOTE_DIR/$REMOTE_NAME"
@@ -241,11 +243,15 @@ gds_sync()
             gio set "$file" -t stringv metadata::emblems emblem-colors-green
         fi
     done
+    
+    rm "$GDS_MOD_FILES_INDICATOR"
 }
 
 # Update emblem of synced files
 gds_update_gio()
 {
+    local mfiles=false
+    
     for file in "${!LOCAL_MTIME[@]}"
     do
         if test ${LOCAL_MTIME["$file"]} -eq ${REMOTE_MTIME["$file"]}
@@ -253,8 +259,16 @@ gds_update_gio()
             gio set "$file" -t stringv metadata::emblems emblem-colors-green
         else
             gio set "$file" -t stringv metadata::emblems emblem-colors-red
+            mfiles=true
         fi
     done
+    
+    if $mfiles
+    then
+        echo -n > "$GDS_MOD_FILES_INDICATOR"
+    else
+        rm "$GDS_MOD_FILES_INDICATOR"
+    fi
 }
 
 # Interactively pull a file from server that is not locally present
