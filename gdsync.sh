@@ -656,5 +656,7 @@ rm -f /tmp/gds_progress_ipc
 save_local_mtime
 $REMOTE_UPDATED && save_remote_mtime
 
+xfce4-panel --plugin-event=genmon:refresh:bool:true
+
 exit 0
 
