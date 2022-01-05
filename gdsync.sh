@@ -9,7 +9,6 @@ PBKDF_ITER='100000' # PBKDF2 iteration count (default: 100000, higher = stronger
 REMOTE_DIR="gdsync" # Directory on Google Drive holding sync items
 
 REMOTE_UPDATED=false
-TX_RX_FILE=""
 declare -A REMOTE_MTIME
 declare -A REMOTE_ENCRYPTED_NAMES
 declare -A LOCAL_MTIME
@@ -34,15 +33,8 @@ pull_file()
     local return_code
     
     cd "$GD_DIR"
-    TX_RX_FILE="$(drive pull -piped "$1" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD"; exit $((PIPESTATUS[0]+PIPESTATUS[1])) )"
-    return_code=$?
-    
-    if ((return_code > 0))
-    then
-        sleep 2
-        TX_RX_FILE="$(drive pull -piped "$1" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD"; exit $((PIPESTATUS[0]+PIPESTATUS[1])) )"
-        return_code=$?
-    fi
+    drive pull -piped "$1" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD"
+    return_code=$((PIPESTATUS[0]+PIPESTATUS[1]))
     cd - > /dev/null
     
     return $return_code
@@ -53,15 +45,8 @@ push_file()
     local return_code
     
     cd "$GD_DIR"
-    cat "$TX_RX_FILE" | openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD" | drive push -piped "$1"
-    return_code=$((PIPESTATUS[1]+PIPESTATUS[2]))
-    
-    if ((return_code > 0))
-    then
-        sleep 2
-        cat "$TX_RX_FILE" | openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD" | drive push -piped "$1"
-        return_code=$((PIPESTATUS[1]+PIPESTATUS[2]))
-    fi
+    openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD" | drive push -piped "$1"
+    return_code=$((PIPESTATUS[0]+PIPESTATUS[1]))
     cd - > /dev/null
     
     return $return_code
@@ -91,9 +76,9 @@ verify_gd_dir()
 
 load_remote_mtime()
 {
-    local file_names clear_filename enc_filename mtime line
+    local file_names clear_filename enc_filename mtime line mtime_file
     
-    pull_file "$REMOTE_DIR/mtime.lst"
+    mtime_file="$(pull_file "$REMOTE_DIR/mtime.lst")"
     if (($? > 0))
     then
         zenity --error --text="Error reading remote index (receive)" --title="gdsync" --width=200
@@ -117,20 +102,22 @@ load_remote_mtime()
         mtime="${line##*/}"
         REMOTE_MTIME["$clear_filename"]="$mtime"
         REMOTE_ENCRYPTED_NAMES["$clear_filename"]="$enc_filename"
-    done <<< "$TX_RX_FILE"
+    done <<< "$mtime_file"
 }
 
 save_remote_mtime()
 {
+    local mtime_file
+    
     cd "$GD_DIR"
     drive trash -quiet "$REMOTE_DIR/mtime.lst"
     cd - > /dev/null
     
-    TX_RX_FILE="$(for file in "${!REMOTE_MTIME[@]}"; do echo "${REMOTE_ENCRYPTED_NAMES["$file"]}$file/${REMOTE_MTIME["$file"]}"; done)"
-    push_file "$REMOTE_DIR/mtime.lst"
-    if (($? > 0))
+    mtime_file="$(for file in "${!REMOTE_MTIME[@]}"; do echo "${REMOTE_ENCRYPTED_NAMES["$file"]}$file/${REMOTE_MTIME["$file"]}"; done)"
+    echo "$mtime_file" | push_file "$REMOTE_DIR/mtime.lst"
+    if ((PIPESTATUS[1] > 0))
     then
-        echo -n "$TX_RX_FILE" > "$HOME/.mtime.lst.gds"
+        echo -n "$mtime_file" > "$HOME/.mtime.lst.gds"
         zenity --error --text="Error writing remote index (saving to $HOME/.mtime.lst.gds)" --title="gdsync" --width=200
         exit 1
     fi
@@ -207,9 +194,8 @@ gds_add()
                 echo -n > "$GDS_MOD_FILES_INDICATOR"
                 PROCESSED_FILES["$file"]="processed"
             else
-                TX_RX_FILE="$(cat $file)"
-                push_file "$REMOTE_DIR/$REMOTE_NAME"
-                if (($? > 0))
+                cat "$file" | push_file "$REMOTE_DIR/$REMOTE_NAME"
+                if ((PIPESTATUS[1] > 0))
                 then
                     PROCESSED_FILES["$file"]="error"
                     continue
@@ -296,13 +282,15 @@ gds_sync()
         
         if test "${LOCAL_MTIME["$file"]}" -lt "${REMOTE_MTIME["$file"]}"
         then
-            pull_file "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
+            pull_file "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" > "$file.gds"
             if (($? > 0))
             then
                 failed_files="$failed_files $file"
+                rm -f "$file.gds"
                 continue
             fi
-            echo -n "$TX_RX_FILE" > "$file"
+            rm -f "$file"
+            mv "$file.gds" "$file"
             
             touch --date="@${REMOTE_MTIME["$file"]}" "$file"
             LOCAL_MTIME["$file"]=${REMOTE_MTIME["$file"]}
@@ -312,9 +300,8 @@ gds_sync()
             cd "$GD_DIR"
             drive trash -quiet "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
             cd - > /dev/null
-            TX_RX_FILE="$(cat "$file")"
-            push_file "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
-            if (($? > 0))
+            cat "$file" | push_file "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
+            if ((PIPESTATUS[1] > 0))
             then
                 failed_files="$failed_files $file"
                 continue
@@ -343,7 +330,7 @@ gds_update_gio()
     
     for file in "${!LOCAL_MTIME[@]}"
     do
-        if test ${LOCAL_MTIME["$file"]} -eq ${REMOTE_MTIME["$file"]}
+        if test "${LOCAL_MTIME["$file"]}" -eq "${REMOTE_MTIME["$file"]}"
         then
             gio set "$file" -t stringv metadata::emblems emblem-colors-green
         else
@@ -414,13 +401,15 @@ $rf"
             mkdir -p "$directory"
         fi
         
-        pull_file "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
+        pull_file "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" > "$file.gds"
         if (($? > 0))
         then
             failed_files="$failed_files $file"
+            rm -f "$file.gds"
             continue
         fi
-        echo -n "$TX_RX_FILE" > "$file"
+        rm -f "$file"
+        mv "$file.gds" "$file"
         
         touch --date="@${REMOTE_MTIME["$file"]}" "$file"
         LOCAL_MTIME["$file"]=${REMOTE_MTIME["$file"]}
@@ -623,9 +612,8 @@ prompt_password
 
 if test -f "$HOME/.mtime.lst.gds"
 then
-    TX_RX_FILE="$(cat "$HOME/.mtime.lst.gds")"
-    push_file "$REMOTE_DIR/mtime.lst"
-    if (($? > 0))
+    cat "$HOME/.mtime.lst.gds" | push_file "$REMOTE_DIR/mtime.lst"
+    if ((PIPESTATUS[1] > 0))
     then
         zenity --error --text="Error writing saved remote index (read from $HOME/.mtime.lst.gds)" --title="gdsync" --width=200
         exit 1
