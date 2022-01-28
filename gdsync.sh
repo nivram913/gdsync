@@ -624,6 +624,14 @@ fi
 load_local_mtime
 load_remote_mtime
 
+for file in "${!LOCAL_MTIME[@]}"
+do
+    if test -z "${REMOTE_MTIME["$file"]}"
+    then
+        unset LOCAL_MTIME["$file"]
+    fi
+done
+
 mkfifo --mode=660 /tmp/gds_progress_ipc
 
 case "$1" in
