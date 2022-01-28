@@ -629,6 +629,7 @@ do
     if test -z "${REMOTE_MTIME["$file"]}"
     then
         unset LOCAL_MTIME["$file"]
+        gio set "$file" -t unset metadata::emblems
     fi
 done
 
