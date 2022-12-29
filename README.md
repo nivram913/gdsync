@@ -8,10 +8,10 @@ This tool is intended to be used from a GUI on **Xubuntu 20.04** but can run on 
 The syncronization is pretty basic : it's based on modification time.
 
 ## Requierements
-- `drive` (https://github.com/odeke-em/drive) (for Google Drive uploading)
+- `gnome-online-accounts` (for Google Drive uploading)
 - `openssl >= 1.1.1` (for encryption)
 - `zenity` command (for GUI)
-- `gio` utility (for emblem on synced files)
+- `gio` utility (for emblem on synced files and file transfert to/from Google Drive)
 - `secret-tool` utility (for storing password in Gnome Keyring)
 
 *Optional :*
@@ -25,7 +25,7 @@ The syncronization is pretty basic : it's based on modification time.
 - Place the script in a directory included in your `$PATH` (like `$HOME/bin`)
 - Configure variables `GDS_INDEX_FILE`, `REMOTE_DIR` and so on, at the beginning of the script
 - Create remote directory configured previously on Google Drive and place an empty `mtime.lst` file in that remote directory
-- Configure `drive` with `drive init` in the relevant directory (refer to the `drive`'s doc)
+- Configure your Google Account with `gnome-control-center`
 
 
 *Action from right click setup in Thunar* :
