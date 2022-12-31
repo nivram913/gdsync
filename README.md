@@ -1,5 +1,5 @@
 # gdsync
-Google Drive synchronization tool. Successor of the venerable `autosave_gd` (https://github.com/nivram913/autosave_gd).
+Google Drive synchronization tool.
 
 Files are encrypted with AES 256 bits in CBC mode before being uploaded to Google Drive. Filenames are encrypted too.
 
@@ -12,18 +12,18 @@ The syncronization is pretty basic : it's based on modification time.
 - `openssl >= 1.1.1` (for encryption)
 - `zenity` command (for GUI)
 - `gio` utility (for emblem on synced files and file transfert to/from Google Drive)
-- `secret-tool` utility (for storing password in Gnome Keyring)
 
 *Optional :*
 
 - `thunar` file manager (for actions from right click on files)
 - `inotifywait` utility (for `gds_inotify.sh` for real time emblem updating)
 - `xfce4-genmon-plugin` plugin (for icon in Xfce panel with `gds_genmon.sh`)
+- `secret-tool` utility (for storing password in Gnome Keyring)
 
 ## Install
 
 - Place the script in a directory included in your `$PATH` (like `$HOME/bin`)
-- Configure variables `GDS_INDEX_FILE`, `REMOTE_DIR` and so on, at the beginning of the script
+- Configure variables `GD_URI`, `GDS_INDEX_FILE`, `REMOTE_DIR` and so on, at the beginning of the script
 - Create remote directory configured previously on Google Drive and place an empty `mtime.lst` file in that remote directory
 - Configure your Google Account with `gnome-control-center`
 
