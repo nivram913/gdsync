@@ -1,6 +1,6 @@
 #! /bin/bash
 
-GD_DIR="$HOME/gdrive/" # Directory with Google Drive access
+GD_URI="google-drive://address@gmail.com/" # URI with Google Drive access
 GDS_INDEX_FILE="$HOME/.gds_index" # Index file of gdsync
 GDS_MOD_FILES_INDICATOR="$HOME/.gds_mfiles_indicator" # Indicator of modified files
 ENC_PASSWORD='' # Password for symetric encryption (AES-256-CBC in use) / SHOULD BE EMPTY
@@ -32,10 +32,8 @@ pull_file()
 {
     local return_code
     
-    cd "$GD_DIR"
-    drive pull -piped "$1" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD"
+    gio cat "$GD_URI/$1" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD"
     return_code=$((PIPESTATUS[0]+PIPESTATUS[1]))
-    cd - > /dev/null
     
     return $return_code
 }
@@ -44,32 +42,20 @@ push_file()
 {
     local return_code
     
-    cd "$GD_DIR"
-    openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD" | drive push -piped "$1"
+    openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -pass pass:"$ENC_PASSWORD" | gio save "$GD_URI/$1"
     return_code=$((PIPESTATUS[0]+PIPESTATUS[1]))
-    cd - > /dev/null
     
     return $return_code
 }
 
-# check the prensence of Google Drive directory in GD_DIR,
-# access right on the Google account
-# and Internet connectivity
+# check the access of Google Drive directory in GD_URI,
 # return 1 if some fails, 0 otherwise
 verify_gd_dir()
 {
-    if ! test -d "$GD_DIR/.gd"
+    if ! gio info "$GD_URI" > /dev/null 2>&1
     then
         return 1
     fi
-    
-    cd "$GD_DIR"
-    if ! drive about > /dev/null 2>&1
-    then
-        return 1
-    fi
-    
-    cd - > /dev/null
     
     return 0
 }
@@ -109,9 +95,7 @@ save_remote_mtime()
 {
     local mtime_file
     
-    cd "$GD_DIR"
-    drive trash -quiet "$REMOTE_DIR/mtime.lst"
-    cd - > /dev/null
+    gio trash "$GD_URI/$REMOTE_DIR/mtime.lst"
     
     mtime_file="$(for file in "${!REMOTE_MTIME[@]}"; do echo "${REMOTE_ENCRYPTED_NAMES["$file"]}$file/${REMOTE_MTIME["$file"]}"; done)"
     echo "$mtime_file" | push_file "$REMOTE_DIR/mtime.lst"
@@ -297,9 +281,7 @@ gds_sync()
             gio set "$file" -t stringv metadata::emblems emblem-colors-green
         elif test "${LOCAL_MTIME["$file"]}" -gt "${REMOTE_MTIME["$file"]}"
         then
-            cd "$GD_DIR"
-            drive trash -quiet "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
-            cd - > /dev/null
+            gio trash "$GD_URI/$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
             cat "$file" | push_file "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
             if ((PIPESTATUS[1] > 0))
             then
@@ -425,7 +407,7 @@ $rf"
 # Force pulling files
 gds_force_pull()
 {
-    local file i len
+    local file i len failed_files
     
     len="$(find "$@" -type f | wc -l)"
     i=0
@@ -451,9 +433,15 @@ gds_force_pull()
         
         if test -f "$file"
         then
-            cd "$GD_DIR"
-            drive pull -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" | openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -out "$file" -pass pass:"$ENC_PASSWORD"
-            cd - > /dev/null
+            pull_file "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}" > "$file.gds"
+            if (($? > 0))
+            then
+                failed_files="$failed_files $file"
+                rm -f "$file.gds"
+                continue
+            fi
+            rm -f "$file"
+            mv "$file.gds" "$file"
             
             touch --date="@${REMOTE_MTIME["$file"]}" "$file"
             LOCAL_MTIME["$file"]=${REMOTE_MTIME["$file"]}
@@ -465,12 +453,17 @@ gds_force_pull()
             continue
         fi
     done <<< "$(find "$@" -type f)"
+    
+    if test -n "$failed_files"
+    then
+        zenity --error --text="Error pulling some files: $failed_files" --title="gdsync" --width=200
+    fi
 }
 
 # Force pushing files
 gds_force_push()
 {
-    local file i len
+    local file i len failed_files
     
     len="$(find "$@" -type f | wc -l)"
     i=0
@@ -496,9 +489,13 @@ gds_force_push()
         
         if test -f "$file"
         then
-            cd "$GD_DIR"
-            openssl enc -aes-256-cbc -salt -pbkdf2 -iter "$PBKDF_ITER" -in "$file" -pass pass:"$ENC_PASSWORD" | drive push -piped "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
-            cd - > /dev/null
+            gio trash "$GD_URI/$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
+            cat "$file" | push_file "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
+            if ((PIPESTATUS[1] > 0))
+            then
+                failed_files="$failed_files $file"
+                continue
+            fi
             
             REMOTE_MTIME["$file"]="$(stat --format=%Y "$file")"
             REMOTE_UPDATED=true
@@ -510,6 +507,11 @@ gds_force_push()
             continue
         fi
     done <<< "$(find "$@" -type f)"
+    
+    if test -n "$failed_files"
+    then
+        zenity --error --text="Error pulling some files: $failed_files" --title="gdsync" --width=200
+    fi
 }
 
 # Interactively delete a file from server and untrack associated local file
@@ -546,9 +548,7 @@ gds_rdel()
         ((i++))
         
         echo "$file"
-        cd "$GD_DIR"
-        drive trash -quiet "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
-        cd - > /dev/null
+        gio trash "$GD_URI/$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
         
         unset REMOTE_MTIME["$file"]
         REMOTE_UPDATED=true
@@ -604,7 +604,7 @@ fi
 
 if ! verify_gd_dir
 then
-    echo "No drive directory at $GD_DIR or no internet connection" >&2
+    echo "No drive access at $GD_URI or no internet connection" >&2
     exit 1
 fi
 
