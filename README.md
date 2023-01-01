@@ -58,5 +58,3 @@ Usage: ./gdsync.sh <option> [<absolute path to files>]
 --force-push  Force pushing of specified file(s)
 ```
 
-Files are never removed from server but a lot of files can be placed in trash folder of Google Drive.
-

@@ -95,7 +95,7 @@ save_remote_mtime()
 {
     local mtime_file
     
-    gio trash "$GD_URI/$REMOTE_DIR/mtime.lst"
+    gio remove "$GD_URI/$REMOTE_DIR/mtime.lst"
     
     mtime_file="$(for file in "${!REMOTE_MTIME[@]}"; do echo "${REMOTE_ENCRYPTED_NAMES["$file"]}$file/${REMOTE_MTIME["$file"]}"; done)"
     echo "$mtime_file" | push_file "$REMOTE_DIR/mtime.lst"
@@ -281,7 +281,7 @@ gds_sync()
             gio set "$file" -t stringv metadata::emblems emblem-colors-green
         elif test "${LOCAL_MTIME["$file"]}" -gt "${REMOTE_MTIME["$file"]}"
         then
-            gio trash "$GD_URI/$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
+            gio remove "$GD_URI/$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
             cat "$file" | push_file "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
             if ((PIPESTATUS[1] > 0))
             then
@@ -489,7 +489,7 @@ gds_force_push()
         
         if test -f "$file"
         then
-            gio trash "$GD_URI/$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
+            gio remove "$GD_URI/$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
             cat "$file" | push_file "$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
             if ((PIPESTATUS[1] > 0))
             then
@@ -548,7 +548,7 @@ gds_rdel()
         ((i++))
         
         echo "$file"
-        gio trash "$GD_URI/$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
+        gio remove "$GD_URI/$REMOTE_DIR/${REMOTE_ENCRYPTED_NAMES["$file"]}"
         
         unset REMOTE_MTIME["$file"]
         REMOTE_UPDATED=true
